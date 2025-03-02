@@ -436,6 +436,49 @@ class PointClickGame {
       );
       ctx.fill();
       ctx.closePath();
+
+      // Draw beak
+      ctx.fillStyle = "orange";
+      ctx.beginPath();
+      ctx.moveTo(bird.x + bird.width / 2, bird.y);
+      ctx.lineTo(bird.x + bird.width / 2 + 10, bird.y - 5);
+      ctx.lineTo(bird.x + bird.width / 2 + 10, bird.y + 5);
+      ctx.fill();
+      ctx.closePath();
+
+      // Draw eyes
+      ctx.fillStyle = "white";
+      ctx.beginPath();
+      ctx.arc(
+        bird.x - bird.width / 4,
+        bird.y - bird.height / 4,
+        3,
+        0,
+        Math.PI * 2
+      );
+      ctx.fill();
+      ctx.closePath();
+
+      ctx.fillStyle = "black";
+      ctx.beginPath();
+      ctx.arc(
+        bird.x - bird.width / 4,
+        bird.y - bird.height / 4,
+        1,
+        0,
+        Math.PI * 2
+      );
+      ctx.fill();
+      ctx.closePath();
+
+      // Draw wings
+      ctx.fillStyle = "darkgray";
+      ctx.beginPath();
+      ctx.moveTo(bird.x - bird.width / 2, bird.y);
+      ctx.lineTo(bird.x - bird.width / 2 - 10, bird.y - 10);
+      ctx.lineTo(bird.x - bird.width / 2 - 10, bird.y + 10);
+      ctx.fill();
+      ctx.closePath();
     };
 
     const updateBird = (
@@ -467,6 +510,356 @@ class PointClickGame {
         updateBird(bird, this.canvas);
         drawBird(this.ctx, bird);
       });
+    };
+
+    // Add beep sound when ball bumps into something
+    const beep = () => {
+      const audioCtx = new AudioContext();
+      const oscillator = audioCtx.createOscillator();
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(440, audioCtx.currentTime); // A4 note
+      oscillator.connect(audioCtx.destination);
+      oscillator.start();
+      oscillator.stop(audioCtx.currentTime + 0.1); // Beep duration
+    };
+
+    // Update ball to beep on collision
+    const originalBallUpdateWithBeep = ball.update.bind(ball);
+    ball.update = (canvas: HTMLCanvasElement) => {
+      originalBallUpdateWithBeep(canvas);
+
+      for (const hotspot of this.hotspots) {
+        if (
+          ball.x + ball.radius > hotspot.x &&
+          ball.x - ball.radius < hotspot.x + hotspot.width &&
+          ball.y + ball.radius > hotspot.y &&
+          ball.y - ball.radius < hotspot.y + hotspot.height
+        ) {
+          // Determine the side of collision and reverse direction accordingly
+          const overlapX =
+            Math.min(
+              ball.x + ball.radius - hotspot.x,
+              hotspot.x + hotspot.width - (ball.x - ball.radius)
+            ) < ball.radius;
+          const overlapY =
+            Math.min(
+              ball.y + ball.radius - hotspot.y,
+              hotspot.y + hotspot.height - (ball.y - ball.radius)
+            ) < ball.radius;
+
+          if (overlapX) {
+            ball.dx = -ball.dx;
+            beep();
+          }
+          if (overlapY) {
+            ball.dy = -ball.dy;
+            beep();
+          }
+        }
+      }
+    };
+
+    // Score counter
+    let score = 0;
+
+    const drawScore = () => {
+      this.ctx.fillStyle = "black";
+      this.ctx.font = "20px Arial";
+      this.ctx.fillText(`Score: ${score}`, 10, 30);
+    };
+
+    // Update game loop to include score and bird chasing
+    const originalGameLoopWithScore = this.gameLoop.bind(this);
+    this.gameLoop = () => {
+      originalGameLoopWithScore();
+      drawScore();
+
+      // Update and draw birds
+      birds.forEach((bird, index) => {
+        updateBird(bird, this.canvas);
+        drawBird(this.ctx, bird);
+
+        // Make the kitty chase the birds
+        const chaseSpeed = 0.5;
+        const angleToBird = Math.atan2(
+          bird.y - kittyCat.y,
+          bird.x - kittyCat.x
+        );
+        kittyCat.dx = Math.cos(angleToBird) * chaseSpeed;
+        kittyCat.dy = Math.sin(angleToBird) * chaseSpeed;
+
+        // Check for collision between kittyCat and bird
+        const distX = bird.x - kittyCat.x;
+        const distY = bird.y - kittyCat.y;
+        const distance = Math.sqrt(distX * distX + distY * distY);
+
+        if (distance < kittyCat.width / 2 + bird.width / 2) {
+          // Bird is caught, remove it and increase score
+          birds.splice(index, 1);
+          score++;
+        }
+      });
+    };
+
+    // Function to spawn a new bird
+    const spawnBird = () => {
+      const newBird = {
+        x: Math.random() * this.canvas.width,
+        y: Math.random() * this.canvas.height,
+        width: 20,
+        height: 10,
+        dx: Math.random() * 2 + 1,
+        dy: Math.random() * 1 - 0.5,
+      };
+      birds.push(newBird);
+    };
+
+    // Function to set a random interval for spawning birds
+    const setRandomBirdSpawnInterval = () => {
+      const interval = Math.random() * 59000 + 1000; // Random interval between 1 and 60 seconds
+      setTimeout(() => {
+        spawnBird();
+        setRandomBirdSpawnInterval(); // Set the next random interval
+      }, interval);
+    };
+
+    // Start the first random interval
+    setRandomBirdSpawnInterval();
+
+    // Change scene to inside of a bathroom when door is opened
+    door.onClick = () => {
+      const hasKey = this.inventory.some((item) => item.name === "Key");
+      if (!hasKey) {
+        this.showMessage("The door is locked. You need a key to open it.");
+        return;
+      }
+
+      this.hotspots = []; // Clear current hotspots
+
+      // Add bathroom-specific hotspots
+      const sink = {
+        x: 100,
+        y: 200,
+        width: 80,
+        height: 40,
+        color: "lightgray",
+        draw(ctx: CanvasRenderingContext2D, x: number, y: number) {
+          ctx.fillStyle = this.color;
+
+          // Draw the basin
+          ctx.beginPath();
+          ctx.rect(x, y, this.width, this.height);
+          ctx.fill();
+          ctx.closePath();
+
+          // Draw the faucet
+          ctx.fillStyle = "silver";
+          ctx.beginPath();
+          ctx.rect(x + this.width / 2 - 5, y - 20, 10, 20);
+          ctx.fill();
+          ctx.closePath();
+
+          // Draw the handles
+          ctx.beginPath();
+          ctx.arc(x + this.width / 2 - 15, y - 10, 5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.closePath();
+
+          ctx.beginPath();
+          ctx.arc(x + this.width / 2 + 15, y - 10, 5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.closePath();
+        },
+        onClick: () => this.showMessage("You turned on the sink."),
+      };
+
+      const toilet = {
+        x: 300,
+        y: 200,
+        width: 60,
+        height: 60,
+        color: "white",
+        draw(ctx: CanvasRenderingContext2D, x: number, y: number) {
+          ctx.fillStyle = this.color;
+
+          // Draw the base of the toilet
+          ctx.beginPath();
+          ctx.ellipse(
+            x + this.width / 2,
+            y + this.height / 2,
+            this.width / 2,
+            this.height / 4,
+            0,
+            0,
+            Math.PI * 2
+          );
+          ctx.fill();
+          ctx.closePath();
+
+          // Draw the tank of the toilet
+          ctx.fillRect(x + this.width / 4, y, this.width / 2, this.height / 2);
+
+          // Draw the toilet seat
+          ctx.strokeStyle = "black";
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.ellipse(
+            x + this.width / 2,
+            y + this.height / 2,
+            this.width / 2.5,
+            this.height / 5,
+            0,
+            0,
+            Math.PI * 2
+          );
+          ctx.stroke();
+          ctx.closePath();
+        },
+        onClick: () => {
+          this.showMessage("You pooped on the floor.");
+
+          // Create multiple brown blobs
+          const brownBlob = {
+            x: Math.random() * this.canvas.width,
+            y: Math.random() * this.canvas.height,
+            width: 20,
+            height: 10,
+            color: "brown",
+            draw(ctx: CanvasRenderingContext2D) {
+              ctx.fillStyle = this.color;
+              ctx.beginPath();
+              ctx.ellipse(
+                this.x,
+                this.y,
+                this.width / 2,
+                this.height / 2,
+                0,
+                0,
+                Math.PI * 2
+              );
+              ctx.fill();
+              ctx.closePath();
+
+              // Draw additional blobs to make it more poop shaped
+              ctx.beginPath();
+              ctx.ellipse(
+                this.x - 10,
+                this.y - 5,
+                this.width / 3,
+                this.height / 3,
+                0,
+                0,
+                Math.PI * 2
+              );
+              ctx.fill();
+              ctx.closePath();
+
+              ctx.beginPath();
+              ctx.ellipse(
+                this.x + 10,
+                this.y - 5,
+                this.width / 3,
+                this.height / 3,
+                0,
+                0,
+                Math.PI * 2
+              );
+              ctx.fill();
+              ctx.closePath();
+
+              ctx.beginPath();
+              ctx.ellipse(
+                this.x,
+                this.y - 10,
+                this.width / 4,
+                this.height / 4,
+                0,
+                0,
+                Math.PI * 2
+              );
+              ctx.fill();
+              ctx.closePath();
+            },
+            onClick: () => {
+              // Play squishy noise
+              const audioCtx = new (window.AudioContext ||
+                window.webkitAudioContext)();
+              const oscillator = audioCtx.createOscillator();
+              oscillator.type = "square";
+              oscillator.frequency.setValueAtTime(300, audioCtx.currentTime); // Squishy sound frequency
+              oscillator.connect(audioCtx.destination);
+              oscillator.start();
+              oscillator.stop(audioCtx.currentTime + 0.1); // Squishy sound duration
+
+              // Remove the blob from the hotspots
+              this.hotspots = this.hotspots.filter(
+                (hotspot) => hotspot !== brownBlob
+              );
+            },
+          };
+
+          this.hotspots.push(brownBlob);
+
+          // Add brown blob to the game loop
+          const originalGameLoop = this.gameLoop.bind(this);
+          this.gameLoop = () => {
+            originalGameLoop();
+            brownBlob.draw(this.ctx);
+          };
+        },
+      };
+
+      const backDoor = {
+        x: 400,
+        y: 200,
+        width: 80,
+        height: 40,
+        color: "green",
+        draw(ctx: CanvasRenderingContext2D, x: number, y: number) {
+          ctx.fillStyle = this.color;
+          ctx.fillRect(x, y, this.width, this.height);
+
+          // Draw door handle
+          ctx.fillStyle = "gold";
+          ctx.beginPath();
+          ctx.arc(x + this.width - 10, y + this.height / 2, 5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.closePath();
+        },
+        onClick: () => {
+          this.hotspots = []; // Clear current hotspots
+          this.initScene(); // Reinitialize the original scene
+        },
+      };
+
+      this.hotspots.push(backDoor);
+
+      this.hotspots.push(sink);
+      this.hotspots.push(toilet);
+
+      // Update game loop to draw bathroom background
+      const originalGameLoop = this.gameLoop.bind(this);
+      this.gameLoop = () => {
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+        // Draw bathroom background
+        this.ctx.fillStyle = "lightblue";
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+        // Draw hotspots
+        for (const hotspot of this.hotspots) {
+          hotspot.draw(this.ctx, hotspot.x, hotspot.y);
+        }
+
+        // Draw inventory bar
+        this.drawInventoryBar();
+
+        // Draw message box
+        this.drawMessages();
+
+        // Request next frame
+        requestAnimationFrame(() => this.gameLoop());
+      };
     };
   }
 
